@@ -151,11 +151,6 @@ greatest(d.max_user,e.max_user,f.max_user)
 least(d.max_user,e.max_user,f.max_user)
 
 
-17.
-10.174.240.39server
-mysql -ubsc_health -p
-bsc_Health@123
-
 18.查找字段中特殊字符
 translate
 usage : translate(这个字段,'要查找字符','替代查找到的字符')
