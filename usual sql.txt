@@ -1,0 +1,348 @@
+常用语句
+1.建表
+create table sqmdb_city.a_pm_kpi_lte_gather_derivate_m(
+)distributed by  (city, area)
+partition by range(sdate)
+(partition sys_20171001 start('20171001'::timestamp) inclusive end('20171101'::timestamp) exclusive);
+
+备份表 以及 数据：
+create table sqmdb_city.edw_table_dependency_bak (like sqmdb_city.edw_table_dependency_20181227bak) distributed by(org_table_name, dest_table_name);
+insert into sqmdb_city.edw_table_dependency_bak
+select *from sqmdb_city.edw_table_dependency_20181227bak;
+
+2.删除有依赖表
+drop table sqmdb_city.a_pm_kpi_lte_gather_derivate_m CASCADE;
+
+3.union
+select sum(count) from (
+select count(*) from sqmdb_city.a_alarm_gsm_d
+union all
+select count(*) from sqmdb_city.a_pm_gsm_cellassessmentlist_d
+) t;
+
+4.增减字段
+ALTER TABLE sqmdb_city.a_pm_kpi_lte_gather_derivate_d ADD COLUMN cell_num_over_1erl numeric;
+ALTER TABLE sqmdb_city.a_pm_kpi_lte_gather_derivate_d DROP COLUMN cell_num_over_1erl RESTRICT;
+
+5.条件判断
+case 
+			when UL_PRBUSE_RATE > DL_PRBUSE_RATE and UL_PRBUSE_RATE > PDCCHCCEUTILRATIO then UL_PRBUSE_RATE
+			when DL_PRBUSE_RATE > UL_PRBUSE_RATE and DL_PRBUSE_RATE > PDCCHCCEUTILRATIO then DL_PRBUSE_RATE
+			else PDCCHCCEUTILRATIO end as PRBUSE_RATE_B,
+			
+6.除数为0判断
+a.
+若divisor为0，则为0，否则为1
+decode(divisor,0,0,1)
+decode(divisor,0,0,Divisor/divisor)
+decode(sum(EffectiveConnMean),0,0,sum(EffectiveConnMean)/sum(case when EffectiveConnMean = 0 or EffectiveConnMean is null then 0 else 1 end)) 
+
+b.比较大小
+select decode(sign(变量1-变量2),-1,变量1,变量2) from dual; --取较小值
+sign()函数根据某个值是0、正数还是负数，分别返回0、1、-1
+例如:
+变量1=10，变量2=20
+则sign(变量1-变量2)返回-1，decode解码结果为“变量1”，达到了取较小值的目的。
+
+c.转换结构
+
+7.取特定精度
+round(xxx,2) 保留两位
+round(decode(cgi_num,0,0,high_traffic_lte_cell*100.0/cgi_num),2)
+
+8.grouping  sets
+
+group by
+grouping sets((a.city,a.area,a.scene_name),(a.city,a.scene_name),(a.scene_name))
+
+group by
+grouping sets((a.city,a.area),(a.city),())
+
+9.选取非空值
+coalesce(b.city,a.city,'不详')
+
+
+10.删除分区和新建分区
+小时表的分区创建
+alter table ${schema}.${table} drop partition if exists sys_${day}23;
+alter table ${schema}.${table} add partition sys_${day}23 start('${day}230000'::timestamp) inclusive end('${nextDay}000000'::timestamp) exclusive;
+
+天表的分区创建      
+alter table [table_scheme].[table_name] add partition sys_[date] start('[date]'::timestamp) inclusive end('[date]+1 day'::timestamp) exclusive; 
+eg:
+alter table sqmdb_city.A_MGVIEW_ALARM_LTE_NEW_D add partition sys_20181216 start('20181216'::timestamp) inclusive end('20181217'::timestamp) exclusive;
+
+drop external table if exists ext_${table}_${day}; 
+create external table ext_${table}_${day} (like ${schema}.${table}) location ('gpfdist://10.174.228.184:7980/${filename}') format 'CSV' (quote as '"' delimiter ',' null as '') encoding 'gbk'; 
+insert into ${schema}.${table} select * from ext_${table}_${day} ;drop external table if exists ext_${table}_${day};
+
+
+11.values
+values
+	('sqmdb_city.a_pm_gsm_monitoringlist_city_d','20181211'::timestamp),('sqmdb_city.a_pm_gsm_wscomptbadcellcity_d','20181211'::timestamp),('sqmdb_city.a_pm_gsm_structureoptisum_d','20181211'::timestamp)
+	) as a (table_name,data_date)
+	
+	
+12.copy命令
+\copy (select * from sqmdb02.jingfen_net_1_prt_sys_201804_30) to '/data/sqmmt/imp_dir/jinfen_datas/jingfen_net_20180430_01.txt' with delimiter as E'\x01' null as '' csv quote as E'\x22';
+
+copy (select.....不能带;命令结束符) to 'filename' with delimiter as 'delimiter'  null as 'null string' escape as ‘’csvquote as '"'  ;
+
+\copy (select * from sqmdb_city.A_MGVIEW_ALARM_LTE_NEW_D where starttime>='20181216' and starttime<='20190103') to '/data/A_MGVIEW_ALARM_LTE_NEW_D.csv' with delimiter as ',' null as '' csv quote as '"';
+
+ nohup psql -h 10.174.240.9 -p 5432 -U sqmdb -d sqmedw -c "\copy (select * from sqmdb02.jingfen_wide_1_prt_sys_201709_30) to '/data/sqmmt/imp_dir/jinfen_datas/exp_jingfen_wide_201809_30_01.txt' with delimiter as E'\x01' null as '' csv quote as E'\x22';" &
+ 
+/data1/label/A_MGVIEW_ALARM_LTE_NEW_D.csv
+
+13.时间相关
+格式
+timestamp 函数now()  				'2018-12-18 10:48:39'
+date			函数date(now())		'2018-12-18'
+
+date
+date '20181213'    result 2018-12-13
+算术参数
+precision
+double precision '3.5' * interval '1 hour'             result  0 years 0 mons 0 days 3 hours 30 mins 0.00 secs
+
+截取子域
+date_part('day',timestamp '2018-12-18 10:48:39')       result  18.000
+extract(hour from timestamp '2001-02-16 20:38:40')     result  20.000
+截断为指定精度
+date_trunc('hour', timestamp '2001-02-16 20:38:40')    result  2001-02-16 20:00:00
+
+获取当前日期所在月份的月份天数
+select 
+cast 
+(
+	extract 
+	(
+		day from 
+		(
+			(to_char('20181031'::timestamp,'yyyymm') || '01')::timestamp + interval '1 month' - interval '1 days')
+--			extract(year from '20181101'::timestamp) || extract(month from '20181101'::timestamp)|| '01')::timestamp + '1 month' - interval '1 days'
+	) 
+as int
+) as date1;
+
+14.匹配
+like
+操作符 ~~ 等效于 LIKE ，而 ~~* 等效于 ILIKE 。还有 !~~ 和 !~~* 操作符分别代表 NOT LIKE 和 NOT ILIKE 。所有这些操作符都是 PostgreSQL 特有的。
+where table_name like 'sum%'
+
+SIMILAR TO
+| 表示选择(两个候选之一)
+* 表示重复前面的项零次或更多次
++ 表示重复前面的项一次或更多次
+() 把项组合成一个逻辑项
+[...] 声明一个字符类
+eg:
+table_name SIMILAR TO 'sum%(h|d|6b|b)' 
+SIMILAR TO '(sum|a)%d$'
+
+
+15.正则
+select *from sqmdb_city.ldmprd_task_monitor where table_name ~'.*pm.*';					~'.*pm.*'    大小写无关     ~* 大小写有关    !~ 不匹配
+eg:
+table_name ~* E'^sum.*(h|6b|b|d)$'
+
+16.行比较最大最小值
+greatest(d.max_user,e.max_user,f.max_user)
+least(d.max_user,e.max_user,f.max_user)
+
+
+17.
+10.174.240.39server
+mysql -ubsc_health -p
+bsc_Health@123
+
+18.查找字段中特殊字符
+translate
+usage : translate(这个字段,'要查找字符','替代查找到的字符')
+
+select 
+tac from mdmprd.dim_cfg_lte_cell 
+where 
+translate(tac,'0123456789','')<>''
+and eff_from_date<='20181201' and eff_to_date>'20181201' ;
+
+
+19.view table's partitions 查看分区个数，及记录条数
+select tablename,partitionname,count(*) from 
+(
+	select tablename,substring(partitionname from 5 for 8) partitionname 
+	from pg_partitions 
+	--where tablename in ('m_mrs_powerheadroom','m_mrs_rsrq','m_pm_prb_cell','m_mrs_packetlr_dl','m_mrs_receivedpower','m_mrs_rsrp_interval','m_mrs_sinrul','m_mrs_tadv','m_mrs_tadv_rsrp','m_pm_cell','m_mrs_aoa','m_mrs_packetlr_ul') 
+	where tablename='sum_pm_city_h'
+	and partitionname like 'sys_201808%'
+) t group by 1,2
+order by tablename,partitionname;
+
+
+20.having count
+查看此表中cgi是否重复
+select cgi,count(*)
+FROM
+mdmprd.m_cm_common_para where eff_from_date<= '20181201' and eff_to_date>'20181201'
+GROUP BY cgi having count(*) > 1;
+
+同一cgi 对应多个object_rdn
+ select cgi from mdmprd.m_pm_cell where sdate>='20181201' and sdate<'20181202' 
+ group by cgi having count(distinct object_rdn)>1;
+ 
+ 
+21.拉链表
+
+失效数据分为两种情况进行处理： 
+#     1. 失效天数 lost_days >= 30天 ;
+#			2. object_rdn发生变化的数据 ;
+
+1. 更新昨日拉链表中还存在但当日性能表并未出现的CGI
+	 性能表记录当日发生变更的cgi,并作为拉链表更新依据，若性能表中出现cgi为null，则更新拉链表数据(lostdays +1 当大于30天就将此条记录置为false失效)
+	 
+select xx from 拉链表 a
+left join
+性能表(source: m_pm_cell,dim_cfg_lte_cell,m_cm_common_para,a_pm_lte_scene_d) b
+on
+		a.cgi = b.cgi
+	where 
+		a.eff_start_date <= cast('{curDay}' as date)-1 and a.eff_end_date > cast('{curDay}' as date)-1
+	and 
+		b.cgi is null
+		
+2. 插入object_rdn未发生变化(当日有cgi记录)的数据，置为true,lostdays=0
+select xx from 拉链表
+left join
+性能表
+a.cgi = b.cgi
+	and
+		a.object_rdn = b.object_rdn
+	where 
+		a.eff_start_date <= cast('{curDay}' as date)-1 and a.eff_end_date > cast('{curDay}' as date)-1
+	and 
+		b.cgi is not null ;
+		
+3. 插入object_rdn发生变化的数据,需要把之前生效的数据置为失效,false,lostdays=0,end_time=当日
+		select xx from 拉链表
+left join
+性能表
+		on
+                a.cgi = b.cgi
+        and
+                a.object_rdn <> b.object_rdn
+        where 
+                a.eff_start_date <= cast('{curDay}' as date)-1 and a.eff_end_date > cast('{curDay}' as date)-1
+        and 
+                b.cgi is not null ;
+                
+4.插入object_rdn发生变化的数据，重新生成当日生效的数据，true,lostdays=0,end_time=2999
+	select xx from 拉链表
+	left join
+	性能表
+        on
+                a.cgi = b.cgi
+        and
+                a.object_rdn <> b.object_rdn
+        where 
+                a.eff_start_date <= cast('{curDay}' as date)-1 and a.eff_end_date > cast('{curDay}' as date)-1
+        and 
+                b.cgi is not null ;
+                
+5.插入新增数据 ，插入性能表数据，cgi在昨日拉链表中不存在
+	select xx from 性能表
+	left join
+	  拉链表   
+	 on
+                a.cgi = b.cgi
+        where 
+                b.cgi is null ;        
+
+6.
+交换历史数据
+alter table sqmdb.member_tmp0 exchange partition for('H') with table sqmdb.member_tmp1;
+（删除约束）
+alter table sqmdb.member_tmp1 drop constraint member_tmp0_1_prt_phis_check;
+
+alter table sqmdb.member_fatdt0 exchange partition for('2011-12-02') with table sqmdb.member_tmp1;
+
+alter table sqmdb.member_tmp1 drop constraint member_fatdt0_1_prt_d20111202_check;
+
+交换当前有效数据
+alter table sqmdb.member_tmp0 exchange partition for('C') with table sqmdb.member_tmp1;
+
+alter table sqmdb.member_tmp1 drop constraint member_tmp0_1_prt_pcur_check;
+
+alter table sqmdb.member_fatdt0 exchange partition for('3000-12-31') with table sqmdb.member_tmp1; 
+                
+                
+22.增加数据记录
+INSERT INTO Persons (LastName, Address) VALUES ('Wilson', 'Champs-Elysees')；
+
+UPDATE sqmdb_city.edw_table_dependency_bak SET period = 'h' WHERE dest_table_name SIMILAR TO '(sum|a)%h$'; 
+
+以条件更新
+format:
+UPDATE table SET column=(
+	case when 
+)
+update sqmdb_city.edw_table_dependency_bak set period = 
+(
+case  
+when dest_table_name ~* E'^(sum|a).*(6b|b|d)$' then 'd'
+when dest_table_name ~* E'^(sum|a).*w$' then 'w'
+when dest_table_name ~* E'^(sum|a).*m$' then 'm'
+when dest_table_name ~* E'^(sum|a).*h$' then 'h' else period end
+);
+
+
+23.行转列
+
+select cgi,array_to_string(array_agg(distinct scene_name),'#') scene_names
+	from (
+		select cgi,regexp_split_to_table(scene_names,'#') scene_name
+		from (
+			select 
+				 cgi
+				 --多个记录拼接为一条记录
+			 	,string_agg(scene_name,'#') as scene_names
+			from
+			(
+			--多列转为一列记录
+				select
+						  cgi
+						 ,core_city_flag||'#'||village_flag||'#'||main_city_flag  as scene_name
+				from mdmprd.dim_cfg_city_flag_cellscene_lte
+			) t
+			group by cgi
+		) t
+	) t
+	group by cgi;  
+	
+24.数据导入
+1.查看表结构
+\d+ [table_scheme].[table_name]
+查看 partition 分区依据
+
+
+将gbk转为utf8	
+iconv -f iso-8859-1 -t utf-8 -c enodeb.txt -o enodeb2.txt
+数据库查看/设置编码
+show client_encoding;
+set client_encoding=utf8;
+方式1：copy导入文件数据入库
+copy [schema].[tabname] from '[dirname]/[filename].txt' with delimiter as 'delimiter' null as 'null string'  csv quote as '"';
+
+方式2：使用只读外部表加载数据：
+create readable external temporary table [tmp_tabname]
+(like [schema].[tablename])
+location ('gpfdist://[DB_SERVER_IP]:[gpfdist_port]/[dirname]/[filename].txt')
+format 'TEXT' (delimiter '\x1E' null as '');
+
+
+nohup sh a_some_cover_cell_load_analy_d.sh &         
+
+\copy (select * from sqmdb_city.A_MGVIEW_ALARM_LTE_NEW_D where starttime>='20181216' and starttime<='20190103') to '/data/A_MGVIEW_ALARM_LTE_NEW_D.csv' with delimiter as ',' null as '' csv quote as '"';
+copy sqmdb_city.A_MGVIEW_ALARM_LTE_NEW_D from '/data1/label/A_MGVIEW_ALARM_LTE_NEW_D.csv' with delimiter as ',' null as ''  csv quote as '"'; 
+
+/data1/label/A_MGVIEW_ALARM_LTE_NEW_D.csv
+
